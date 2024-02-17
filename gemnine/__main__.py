@@ -39,7 +39,7 @@ async def main():
     if not config_path.exists():
         print(f"Config file not found: {config_path}")
         user_input = input("Create a new config file? (Y/n): ").strip() or 'y'
-        create_config = user_input.lower() != 'y'
+        create_config = user_input.lower() == 'y'
 
         api_key = getpass("Enter your API key: ")
         sys_proxies = urllib.request.getproxies()

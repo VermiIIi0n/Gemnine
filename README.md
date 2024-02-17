@@ -4,8 +4,6 @@ This module is designed for asynchronous usage and provides a simple interface t
 
 It also provides a command-line interface for interactive usage.
 
-While it does provide synchronous methods, it is recommended to use the asynchronous methods for better performance.
-
 ## **NOTICE**
 
 Images are not tested and may not work as expected.
@@ -26,7 +24,7 @@ pip install -U gemnine
 
 You can use config file, command parameters or interactive input to set these values.
 
-By default, `gemnine` will look for files named `config.json` and `session.json` in the user cache directory.
+By default, `gemnine` will look for files named `config.json` and `session.json` in the user config and cache directory.
 
 ```bash
 gemnine -c /path/to/config.json  # Use a config file
@@ -86,6 +84,34 @@ async def main():
 
     async for r in bot.stream("I'm fine, thank you."):
         print(r, end='')
+    
+    # `Bot` instance it self doesn't track the session history
+    # To keep track of the session history, use `Session` instance
+    sess = bot.new_session()
+
+    print(await sess.send("Hello, how are you?"))
+
+    async for r in sess.stream("What was my last question?"):
+        print(r, end='')
 
 asyncio.run(main())
+```
+
+#### Save and load session history
+
+`Session` and `Bot` use `pydantic` models under the hood. You can save and load the session history using `model_dump_json` and `model_validate_json`  or pass arguments to `new_session` methods.
+
+```python
+import json
+from pathlib import Path
+sess_path = Path("session.json")
+
+sess = bot.new_session()
+
+data = sess.model_dump_json()
+
+sess_path.write_text(data)
+
+sess = bot.new_session(**json.loads(sess_path.read_text()))
+
 ```

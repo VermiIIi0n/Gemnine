@@ -99,6 +99,14 @@ class Message(BaseModel):
         def __str__(self):
             return self.text
 
+        def __eq__(self, other):
+            if not isinstance(other, Message.TextSegment):
+                return False
+            return self.text == other.text
+
+        def __hash__(self):
+            return hash(self.text)
+
     class ImageSegment(BaseSegment):
         image_url: str
         image_format: str | None = None
@@ -115,6 +123,14 @@ class Message(BaseModel):
         def __str__(self):
             return f"#image({self.image_url})"
 
+        def __eq__(self, other):
+            if not isinstance(other, Message.ImageSegment):
+                return False
+            return self.image_url == other.image_url
+
+        def __hash__(self):
+            return hash(self.image_url)
+
     class FuncCallSegment(BaseSegment):
         ...
 
@@ -125,16 +141,25 @@ class Message(BaseModel):
     content: str | list[TextSegment | ImageSegment
                         | FuncCallSegment | FuncReturnSegment] = Field(alias="parts", default='')
     _tokens: int | None = None
+    _hash: int | None = None
 
     @field_serializer("content", when_used="json")
     def convert_content(self, value, _) -> list[dict]:
         if isinstance(value, str):
             return [{"text": value}]
-        return value
+        return list(_dump(c) for c in value)
 
     @model_validator(mode="after")
     def post_init(self) -> Self:
-        self._tokens = None
+        content_hash = (
+            hash(self.content)
+            if isinstance(self.content, str)
+            else hash(tuple(self.content))
+        )
+        if self._hash is None or self._hash != content_hash:
+            self._tokens = None
+            self._hash = content_hash
+
         return self
 
     def __str__(self) -> str:
@@ -252,6 +277,9 @@ class Bot(BaseModel):
         r = await self._cli.get(
             f"https://{self.api_host}/v1/{self.model}",
             headers={"x-goog-api-key": self.api_key})
+
+        r.raise_for_status()
+
         m = ModelInfo.model_validate_json(r.text)
         if m.name == self.model:
             self._minfo = m
@@ -261,6 +289,8 @@ class Bot(BaseModel):
         r = await self._cli.get(
             f"https://{self.api_host}/v1/models",
             headers={"x-goog-api-key": self.api_key})
+
+        r.raise_for_status()
 
         ms = list(ModelInfo.model_validate(m) for m in r.json()["models"])
         for m in ms:
