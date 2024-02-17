@@ -247,8 +247,8 @@ class Bot(BaseModel):
                                       trust_env=False,
                                       **kw)
 
-    def new_session(self, msgs: list[Message] | None = None) -> Session:
-        return Session(bot=self, messages=msgs or [])
+    def new_session(self, **kw) -> Session:
+        return Session(bot=self, **kw)
 
     def _get_json(
             self,
