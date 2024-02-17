@@ -39,8 +39,7 @@ async def main():
     if not config_path.exists():
         print(f"Config file not found: {config_path}")
         user_input = input("Create a new config file? (Y/n): ").strip() or 'y'
-        if user_input.lower() != 'y':
-            return
+        create_config = user_input.lower() != 'y'
 
         api_key = getpass("Enter your API key: ")
         sys_proxies = urllib.request.getproxies()
@@ -61,10 +60,10 @@ async def main():
             except (ValueError, IndexError):
                 print("Invalid input, exiting")
                 exit(1)
+        if create_config:
+            config_path.write_text(b.model_dump_json(indent=4))
+            print(f"Config file created: {config_path}")
 
-        config_path.write_text(b.model_dump_json(indent=4))
-        print(f"Config file created: {config_path}")
-        return
     else:
         print(f"Loading config file: {config_path}")
         b = bot.Bot.model_validate_json(config_path.read_text())
