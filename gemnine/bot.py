@@ -5,7 +5,7 @@ ChatGPT wrapper
 from __future__ import annotations
 import httpx
 import ujson as json
-from typing import Any, Self, AsyncGenerator, Literal
+from typing import Any, Self, AsyncGenerator, Literal, Sequence
 from typing import TypeAlias, cast, get_args, overload
 from enum import Enum
 from pydantic import BaseModel as PyBaseModel, Field, validate_call, PrivateAttr
@@ -81,7 +81,7 @@ class Role(str, Enum):
 class Safety(BaseModel):
     category: SafetyCategory
     threshold: SafetyBlockThreshold | None = None
-    probability: SafetyViolationProbability | None = None
+    probability: SafetyViolationProbability | None = Field(exclude=True, default=None)
 
 
 class Message(BaseModel):
@@ -394,7 +394,7 @@ class Bot(BaseModel):
                     r.candidates[0].content.content[0]).text
 
 
-class Session(BaseModel):
+class Session(BaseModel, Sequence[Message]):
     bot: Bot | None = Field(exclude=True)
     messages: list[Message] = Field(default_factory=list)
     message_lock: int = 0
