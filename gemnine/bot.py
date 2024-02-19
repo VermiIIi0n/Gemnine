@@ -187,6 +187,14 @@ class FullResponse(BaseModel):
     prompt_feedback: PromptFeedback = Field(alias="promptFeedback")
 
 
+async def _better_raise_status(r: httpx.Response):
+    if r.status_code != 200:
+        await r.aread()
+        raise RuntimeError(
+            f"{r.status_code} {r.reason_phrase} {r.text}",
+        )
+
+
 class Bot(BaseModel):
     """
     # Gemini bot
@@ -278,7 +286,7 @@ class Bot(BaseModel):
             f"https://{self.api_host}/v1/{self.model}",
             headers={"x-goog-api-key": self.api_key})
 
-        r.raise_for_status()
+        await _better_raise_status(r)
 
         m = ModelInfo.model_validate_json(r.text)
         if m.name == self.model:
@@ -290,7 +298,7 @@ class Bot(BaseModel):
             f"https://{self.api_host}/v1/models",
             headers={"x-goog-api-key": self.api_key})
 
-        r.raise_for_status()
+        await _better_raise_status(r)
 
         ms = list(ModelInfo.model_validate(m) for m in r.json()["models"])
         for m in ms:
@@ -307,6 +315,9 @@ class Bot(BaseModel):
                 f"https://{self.api_host}/v1/{self.model}:countTokens",
                 headers={"x-goog-api-key": self.api_key},
                 json={"contents": [_dump(msgs)]})
+
+            await _better_raise_status(r)
+
             msgs._tokens = cast(int, r.json()["totalTokens"])
             return msgs._tokens
 
@@ -317,6 +328,9 @@ class Bot(BaseModel):
             f"https://{self.api_host}/v1/{self.model}:countTokens",
             headers={"x-goog-api-key": self.api_key},
             json={"contents": list(_dump(m) for m in msgs)})
+
+        await _better_raise_status(r)
+
         return r.json()["totalTokens"]
 
     async def stream(self,
@@ -362,7 +376,7 @@ class Bot(BaseModel):
             json=self._get_json(session)
         )
 
-        r.raise_for_status()
+        await _better_raise_status(r)
         # print(f"\n\nres: {r.text}")
         return FullResponse.model_validate_json(r.text)
 
