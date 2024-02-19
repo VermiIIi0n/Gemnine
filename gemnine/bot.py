@@ -101,7 +101,7 @@ class Message(BaseModel):
 
         def __eq__(self, other):
             if not isinstance(other, Message.TextSegment):
-                return False
+                return NotImplemented
             return self.text == other.text
 
         def __hash__(self):
@@ -125,7 +125,7 @@ class Message(BaseModel):
 
         def __eq__(self, other):
             if not isinstance(other, Message.ImageSegment):
-                return False
+                return NotImplemented
             return self.image_url == other.image_url
 
         def __hash__(self):
@@ -379,6 +379,8 @@ class Bot(BaseModel):
 class Session(BaseModel):
     bot: Bot | None = Field(exclude=True)
     messages: list[Message] = Field(default_factory=list)
+    message_lock: int = 0
+    """Prevent earliest N messages from being trimmed"""
 
     async def trim(self, target_max: int | None = None, bot: Bot | None = None) -> int:
         """
@@ -404,7 +406,8 @@ class Session(BaseModel):
                 break
             msg_cnt += 1
             num_tokens += this_tokens
-        self.messages = self.messages[len(self.messages)-msg_cnt:]
+        trim_start = max(self.message_lock, len(self.messages) - msg_cnt)
+        self.messages = self.messages[trim_start:]
         return num_tokens
 
     @validate_call
