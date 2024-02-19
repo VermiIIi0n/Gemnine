@@ -4,6 +4,7 @@ ChatGPT wrapper
 
 from __future__ import annotations
 import httpx
+import ujson as json
 from typing import Any, Self, AsyncGenerator, Literal
 from typing import TypeAlias, cast, get_args, overload
 from enum import Enum
@@ -357,8 +358,7 @@ class Bot(BaseModel):
             async for line in r.aiter_lines():
                 line = line.strip()
                 if line.startswith("\"text\": "):
-                    line = line.removeprefix("\"text\": ")
-                    line = line.strip('"').replace("\\n", '\n')
+                    line = json.loads('{'+line+'}')["text"]
                     yield line
 
     async def send_raw(self,
@@ -376,8 +376,12 @@ class Bot(BaseModel):
             json=self._get_json(session)
         )
 
-        await _better_raise_status(r)
-        # print(f"\n\nres: {r.text}")
+        if r.status_code != 200:
+            session.pop()
+            raise RuntimeError(
+                f"{r.status_code} {r.reason_phrase} {r.text}",
+            )
+
         return FullResponse.model_validate_json(r.text)
 
     async def send(self,
@@ -387,7 +391,7 @@ class Bot(BaseModel):
                    ) -> str:
         r = await self.send_raw(prompt, role, session)
         return cast(Message.TextSegment,
-                    r.candidates[0].content.content[0]).text.replace("\\n", '\n')
+                    r.candidates[0].content.content[0]).text
 
 
 class Session(BaseModel):
