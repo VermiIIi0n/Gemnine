@@ -424,8 +424,9 @@ class Session(BaseModel):
                 break
             msg_cnt += 1
             num_tokens += this_tokens
-        trim_start = max(self.message_lock, len(self.messages) - msg_cnt)
-        self.messages = self.messages[trim_start:]
+        message_lock = max(0, self.message_lock)
+        trim_start = max(message_lock, len(self.messages) - msg_cnt)
+        self.messages = self.messages[:message_lock] + self.messages[trim_start:]
         return num_tokens
 
     @validate_call
