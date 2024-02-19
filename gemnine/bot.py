@@ -416,16 +416,18 @@ class Session(BaseModel):
             else:
                 target_max = max(0, model_max_tokens-int(bot.comp_tokens))
 
+        message_lock = max(0, self.message_lock)
         msg_cnt = 0
         num_tokens = 0
-        for message in reversed(self.messages):
+        for message in self.messages[:message_lock]:
+            num_tokens += await bot.count_tokens(message)
+        for message in reversed(self.messages[message_lock:]):
             this_tokens = await bot.count_tokens(message)
             if num_tokens + this_tokens >= target_max:
                 break
             msg_cnt += 1
             num_tokens += this_tokens
-        message_lock = max(0, self.message_lock)
-        trim_start = max(message_lock, len(self.messages) - msg_cnt)
+        trim_start = len(self.messages) - msg_cnt
         self.messages = self.messages[:message_lock] + self.messages[trim_start:]
         return num_tokens
 
