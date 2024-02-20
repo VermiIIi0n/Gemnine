@@ -428,6 +428,7 @@ class Session(BaseModel, Sequence[Message]):
             msg_cnt += 1
             num_tokens += this_tokens
         trim_start = len(self.messages) - msg_cnt
+        trim_start += trim_start % 2
         self.messages = self.messages[:message_lock] + self.messages[trim_start:]
         return num_tokens
 
