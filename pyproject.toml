@@ -8,7 +8,7 @@ packages = [{ include = "gemnine" }]
 license = "MIT"
 homepage = "https://github.com/VermiIIi0n/Gemnine"
 
-keywords = ["utilities"]
+keywords = ["utilities", "gemini", "async", "api"]
 
 classifiers = [
     "Development Status :: 4 - Beta",
