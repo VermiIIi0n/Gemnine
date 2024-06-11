@@ -181,11 +181,13 @@ class FullResponse(BaseModel):
         index: int
         safety_ratings: list[Safety] = Field(alias="safetyRatings")
 
-    class PromptFeedback(BaseModel):
-        safety_ratings: list[Safety] = Field(alias="safetyRatings")
+    class UsageMeta(BaseModel):
+        prompt_token_count: int = Field(alias="promptTokenCount")
+        candidates_token_count: int = Field(alias="candidatesTokenCount")
+        total_token_count: int = Field(alias="totalTokenCount")
 
     candidates: list[Candidate]
-    prompt_feedback: PromptFeedback = Field(alias="promptFeedback")
+    usage_meta: UsageMeta = Field(alias="usageMetadata")
 
 
 async def _better_raise_status(r: httpx.Response):

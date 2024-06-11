@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "gemnine"
-version = "0.1.10"
+version = "0.1.11"
 description = "Wrapper for Gemini AI API"
 authors = ["VermiIIi0n <dungeon.behind0t@icloud.com>"]
 readme = "README.md"
