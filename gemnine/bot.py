@@ -3,13 +3,14 @@ ChatGPT wrapper
 """
 
 from __future__ import annotations
+from base64 import b64encode
 import httpx
 import ujson as json
 from typing import Any, Self, AsyncGenerator, Literal, Sequence
 from typing import TypeAlias, cast, get_args, overload
 from enum import Enum
 from pydantic import BaseModel as PyBaseModel, Field, validate_call, PrivateAttr
-from pydantic import model_validator, ConfigDict
+from pydantic import model_validator, ConfigDict, ValidationError
 from pydantic import field_serializer, model_serializer
 # from PIL import Image
 # from pathlib import Path
@@ -17,6 +18,7 @@ from pydantic import field_serializer, model_serializer
 # from io import BytesIO
 # from vermils.io import aio
 from vermils.gadgets import mimics
+from .exc import ContentBlockedError
 
 
 DEFAULT_CONFIG = ConfigDict(
@@ -132,6 +134,30 @@ class Message(BaseModel):
         def __hash__(self):
             return hash(self.image_url)
 
+    class BlobSegment(BaseSegment):
+        data: bytes
+        mime_type: str
+
+        @model_serializer(when_used="json")
+        def jsonable_serialize(self):
+            return {
+                "inlineData": {
+                    "mimeType": self.mime_type,
+                    "data": b64encode(self.data).decode("utf-8")
+                }
+            }
+
+        def __str__(self):
+            return f"#blob({self.mime_type})"
+
+        def __eq__(self, other):
+            if not isinstance(other, Message.BlobSegment):
+                return NotImplemented
+            return self.data == other.data and self.mime_type == other.mime_type
+
+        def __hash__(self):
+            return hash((self.data, self.mime_type))
+
     class FuncCallSegment(BaseSegment):
         ...
 
@@ -140,7 +166,8 @@ class Message(BaseModel):
 
     role: Role
     content: str | list[TextSegment | ImageSegment
-                        | FuncCallSegment | FuncReturnSegment] = Field(alias="parts", default='')
+                        | FuncCallSegment | FuncReturnSegment] = Field(
+                            alias="parts", default='')
     _tokens: int | None = None
     _hash: int | None = None
 
@@ -181,13 +208,21 @@ class FullResponse(BaseModel):
         index: int
         safety_ratings: list[Safety] = Field(alias="safetyRatings")
 
-    class UsageMeta(BaseModel):
-        prompt_token_count: int = Field(alias="promptTokenCount")
-        candidates_token_count: int = Field(alias="candidatesTokenCount")
-        total_token_count: int = Field(alias="totalTokenCount")
+    class PromptFeedback(BaseModel):
+        block_reason: Literal["OTHER", "SAFETY", "BLOCK_REASON_UNSPECIFIED"] = Field(
+            default="BLOCK_REASON_UNSPECIFIED", alias="blockReason")
+        safety_ratings: list[Safety] = Field(
+            default_factory=list, alias="safetyRatings")
 
-    candidates: list[Candidate]
-    usage_meta: UsageMeta = Field(alias="usageMetadata")
+    class UsageMeta(BaseModel):
+        prompt_token_count: int = Field(default=0, alias="promptTokenCount")
+        candidates_token_count: int = Field(default=0, alias="candidatesTokenCount")
+        total_token_count: int = Field(default=0, alias="totalTokenCount")
+
+    candidates: list[Candidate] = Field(default_factory=list)
+    usage_meta: UsageMeta = Field(default_factory=UsageMeta, alias="usageMetadata")
+    prompt_feedback: PromptFeedback = Field(
+        default_factory=PromptFeedback, alias="promptFeedback")
 
 
 async def _better_raise_status(r: httpx.Response):
@@ -202,7 +237,7 @@ class Bot(BaseModel):
     """
     # Gemini bot
 
-    ## Parameters
+    ## Key Parameters
     - `model` (str): Model to use
     - `api_key` (str): OpenAI API key
     - `prompt` (str): Initial prompt
@@ -210,7 +245,7 @@ class Bot(BaseModel):
     - `comp_tokens` (float | int): Reserved tokens for completion, when value is in (0, 1), it represents a ratio,
         [1,-] represents tokens count, 0 for auto mode
     - `top_p` (float): Nucleus sampling: limits the generated guesses to a cumulative probability. (0.0 to 1.0)
-    - `proxies` (dict[str, str]): Connection proxies
+    - `proxy` (str): Connection proxy url
     - `timeout` (float | None): Connection timeout
     """
 
@@ -221,7 +256,10 @@ class Bot(BaseModel):
 
     # See https://ai.google.dev/docs/concepts#model_parameters
     max_reply_tokens: int | None = None
+    candidate_count: int = 1
     stop: list[str] | None = None
+    """stop sequences, once the model generates one of the string, 
+    it will stop generating more text."""
     temperature: float | None = None
     top_p: float | None = None
     top_k: int | None = None
@@ -243,7 +281,8 @@ class Bot(BaseModel):
     @model_validator(mode="after")
     def post_init(self) -> Self:
         if (cast(None | httpx.AsyncClient, self._cli) is None
-                or self.proxy != self._last_proxy or self.timeout != self._last_timeout):
+                or self.proxy != self._last_proxy
+                or self.timeout != self._last_timeout):
             self.respawn_cli()
         if self.model != self._last_model:
             self._minfo = None
@@ -269,6 +308,7 @@ class Bot(BaseModel):
             "contents": list(_dump(m) for m in session.messages),
             "generationConfig": {
                 "stopSequences": self.stop,
+                "candidateCount": self.candidate_count,
                 "maxOutputTokens": self.max_reply_tokens,
                 "topP": self.top_p,
                 "topK": self.top_k,
@@ -368,6 +408,9 @@ class Bot(BaseModel):
                        role: Role = Role.User,
                        session: Session | None = None,
                        ) -> FullResponse:
+        """
+        @raise ValidationError: When the response is invalid
+        """
         session = self.new_session() if session is None else session
         session.append(Message(role=role, content=prompt))
         await session.trim()
@@ -384,6 +427,13 @@ class Bot(BaseModel):
                 f"{r.status_code} {r.reason_phrase} {r.text}",
             )
 
+        # try:
+        #     from pydantic import TypeAdapter
+        #     TypeAdapter(FullResponse).validate_json(r.text)
+        # except ValidationError as e:
+        #     print(e.errors())
+        #     raise e
+
         return FullResponse.model_validate_json(r.text)
 
     async def send(self,
@@ -391,7 +441,13 @@ class Bot(BaseModel):
                    role: Role = Role.User,
                    session: Session | None = None,
                    ) -> str:
+        """
+        @raise ContentBlockedError: When the content is blocked
+        @raise ValidationError: When the response is invalid
+        """
         r = await self.send_raw(prompt, role, session)
+        if r.prompt_feedback.block_reason != "BLOCK_REASON_UNSPECIFIED":
+            raise ContentBlockedError(r.prompt_feedback.block_reason)
         return cast(Message.TextSegment,
                     r.candidates[0].content.content[0]).text
 
