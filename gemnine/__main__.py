@@ -9,26 +9,25 @@ from getpass import getpass
 from gemnine import bot, __author__, __version__
 from platformdirs import user_cache_dir, user_config_dir
 
-
 CONFIG_VERSION = "1.0.0"
 SESSION_VERSION = "1.0.0"
 
+# Utility function to ensure directories exist
+def ensure_exists(path):
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 async def main():
     parser = argparse.ArgumentParser(description="Gemnine")
 
-    cache_dir = Path(user_cache_dir(
-        "gemnine", __author__, SESSION_VERSION, ensure_exists=True))
-    config_dir = Path(user_config_dir(
-        "gemnine", __author__, CONFIG_VERSION, ensure_exists=True))
+    # Ensure cache and config directories exist
+    cache_dir = ensure_exists(Path(user_cache_dir("gemnine", __author__, SESSION_VERSION)))
+    config_dir = ensure_exists(Path(user_config_dir("gemnine", __author__, CONFIG_VERSION)))
 
     parser.add_argument("-m", "--model", help="Model name", default=None)
-    parser.add_argument("-c", "--config", help="Path to config file",
-                        default=config_dir / "config.json")
-    parser.add_argument("-s", "--session",
-                        help="Path to session file", default=cache_dir / "session.json")
-    parser.add_argument("-V", "--version", action="version",
-                        version=f"%(prog)s {__version__}")
+    parser.add_argument("-c", "--config", help="Path to config file", default=config_dir / "config.json")
+    parser.add_argument("-s", "--session", help="Path to session file", default=cache_dir / "session.json")
+    parser.add_argument("-V", "--version", action="version", version=f"%(prog)s {__version__}")
 
     args = parser.parse_args()
 
@@ -46,7 +45,8 @@ async def main():
         proxy = sys_proxies.get("https", sys_proxies.get("http", None))
         b = bot.Bot(
             model=model or "models/gemini-pro",
-            api_key=api_key, timeout=20, proxy=proxy)
+            api_key=api_key, timeout=20, proxy=proxy
+        )
         print(f"Using system proxy: {b.proxy}")
 
         if not model:
@@ -145,8 +145,7 @@ async def main():
                             for i, r in enumerate(roles):
                                 print(f"    {i:2}: {r.value}")
                             try:
-                                role = roles[int(
-                                    input("Enter the number of the role: "))]
+                                role = roles[int(input("Enter the number of the role: "))]
                                 print(f"Selected role: {role.value}")
                             except (ValueError, IndexError):
                                 print("Invalid input")
@@ -157,8 +156,7 @@ async def main():
                             for i, m in enumerate(models):
                                 print(f"    {i:2}: {m.name}")
                             try:
-                                model = models[int(
-                                    input("Enter the number of the model: "))]
+                                model = models[int(input("Enter the number of the model: "))]
                                 print(f"Selected model: {model.name}")
                                 b.model = model.name
                             except (ValueError, IndexError):
@@ -191,11 +189,10 @@ async def main():
                     try:
                         for img_url in match.groups():
                             text_end = user_input.index(img_url)
-                            pre_text = user_input[:text_end-7]  # remove `#image(`
+                            pre_text = user_input[:text_end - 7]  # remove `#image(`
                             if pre_text:
                                 prompt.append(bot.Message.TextSegment(text=pre_text))
-                            user_input = user_input[text_end +
-                                                    len(img_url) + 1:]  # remove `)`
+                            user_input = user_input[text_end + len(img_url) + 1:]  # remove `)`
                             img_seg = bot.Message.ImageSegment(image_url=img_url)
                             prompt.append(img_seg)
                             if user_input:
