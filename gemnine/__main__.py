@@ -212,7 +212,7 @@ async def main():
                 try:
                     async for res in session.stream(prompt, role):
                         print(res, end='', flush=True)
-                    print(await session.send(prompt=prompt, role=role))
+                    # print(await session.send(prompt=prompt, role=role))
                 except (KeyboardInterrupt, asyncio.CancelledError):
                     print("\n<Interrupted>")
                 finally:
